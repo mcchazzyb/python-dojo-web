@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Python Dojo Web</title>
+  <link rel="stylesheet" href="./static/styles.css" />
+</head>
+<body>
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+
+  <main class="shell">
+    <section class="hero panel">
+      <div>
+        <p class="eyebrow">BROWSER ONLY · PORTABLE · HOSTABLE</p>
+        <h1>Python Dojo Web</h1>
+        <p class="lede">Learn Python by writing real code in your browser. No backend required. Pick up exactly where you left off.</p>
+      </div>
+      <div class="hero-stats" id="hero-stats"></div>
+    </section>
+
+    <section class="layout">
+      <aside class="panel sidebar">
+        <div class="sidebar-head">
+          <h2>Mission Map</h2>
+          <button id="reset-btn" class="ghost">Reset</button>
+        </div>
+        <div class="sidebar-tools">
+          <button id="export-btn" class="ghost">Export progress</button>
+          <label class="ghost import-label">
+            Import progress
+            <input id="import-input" type="file" accept="application/json" hidden />
+          </label>
+        </div>
+        <div id="runtime-status" class="runtime-status">Loading Python runtime…</div>
+        <div id="lesson-list" class="lesson-list"></div>
+      </aside>
+
+      <section class="panel workspace">
+        <div id="lesson-view" class="lesson-view empty">
+          <h2>Preparing your dojo</h2>
+          <p>Pyodide and the editor are loading. Once ready, your lessons will appear.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <template id="lesson-template">
+    <article class="lesson-card">
+      <div>
+        <div class="pill-row">
+          <span class="pill track"></span>
+          <span class="pill level"></span>
+          <span class="pill xp"></span>
+        </div>
+        <h3></h3>
+        <p class="summary"></p>
+      </div>
+      <div class="lesson-meta"></div>
+    </article>
+  </template>
+
+  <script>window.require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' } };</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+  <script src="./static/app.js"></script>
+</body>
+</html>

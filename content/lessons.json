@@ -1,0 +1,74 @@
+[
+  {
+    "id": "strings_slugify",
+    "title": "Slugify a title",
+    "track": "Core Python",
+    "level": 1,
+    "xp": 40,
+    "concepts": ["strings", "methods", "functions"],
+    "summary": "Turn a messy title into a clean URL slug.",
+    "why": "String cleanup shows up everywhere in real Python work.",
+    "brief": "Write a function slugify(title) that lowercases the text, trims outer whitespace, replaces spaces/underscores with hyphens, removes non alphanumeric characters except hyphens, and collapses repeated hyphens.",
+    "starter_code": "import re\n\ndef slugify(title: str) -> str:\n    # your code here\n    raise NotImplementedError\n",
+    "test_code": "assert slugify(' Hello Python World ') == 'hello-python-world'\nassert slugify('API__for Beginners!!!') == 'api-for-beginners'\nassert slugify('Already---clean') == 'already-clean'\n",
+    "hints": [
+      "Start with strip() and lower().",
+      "Use the re module to remove characters you do not want.",
+      "Collapse repeated spaces or hyphens at the end."
+    ]
+  },
+  {
+    "id": "list_filter_totals",
+    "title": "Filter paid invoices",
+    "track": "Data Wrangling",
+    "level": 1,
+    "xp": 55,
+    "concepts": ["lists", "dicts", "loops"],
+    "summary": "Find paid invoices and total their value.",
+    "why": "A huge amount of scripting is filtering records and summing values.",
+    "brief": "Write a function paid_total(invoices) that returns the total amount for invoices where status == 'paid'. Round to 2 decimal places.",
+    "starter_code": "def paid_total(invoices: list[dict]) -> float:\n    # your code here\n    raise NotImplementedError\n",
+    "test_code": "sample = [\n    {'client': 'A', 'amount': 10.125, 'status': 'paid'},\n    {'client': 'B', 'amount': 99.99, 'status': 'draft'},\n    {'client': 'C', 'amount': 20.105, 'status': 'paid'},\n]\nassert paid_total(sample) == 30.23\nassert paid_total([]) == 0\n",
+    "hints": [
+      "Loop through the invoices or use sum() with a generator.",
+      "Only add amounts when status is 'paid'.",
+      "Use round(total, 2) once at the end."
+    ]
+  },
+  {
+    "id": "api_payload_cleanup",
+    "title": "Normalize API payloads",
+    "track": "Web + APIs",
+    "level": 2,
+    "xp": 85,
+    "concepts": ["dicts", "conditionals", "functions"],
+    "summary": "Clean incoming JSON-like data into a reliable shape.",
+    "why": "Real systems spend a lot of time taming messy inputs.",
+    "brief": "Write normalize_user(payload) that returns a dict with keys name, email, is_active. Name should be title-cased and stripped. Email should be lowercase and stripped. Missing is_active should default to False.",
+    "starter_code": "def normalize_user(payload: dict) -> dict:\n    # your code here\n    raise NotImplementedError\n",
+    "test_code": "user = normalize_user({'name': '  charlie b ', 'email': ' TEST@EXAMPLE.COM  '})\nassert user == {'name': 'Charlie B', 'email': 'test@example.com', 'is_active': False}\nuser2 = normalize_user({'name': 'sam', 'email': 'sam@example.com', 'is_active': 1})\nassert user2['is_active'] is True\n",
+    "hints": [
+      "payload.get('field', default) is your friend.",
+      "strip(), lower(), and title() do most of the cleanup.",
+      "bool(...) can normalize the active flag."
+    ]
+  },
+  {
+    "id": "class_bank_account",
+    "title": "Build a tiny bank account class",
+    "track": "Objects",
+    "level": 3,
+    "xp": 100,
+    "concepts": ["classes", "methods", "errors"],
+    "summary": "Create a small class with state and safety checks.",
+    "why": "Classes make sense faster when the state is concrete.",
+    "brief": "Implement a BankAccount class with methods deposit(amount), withdraw(amount), and balance property. Reject zero or negative deposits and reject withdrawals that exceed balance by raising ValueError.",
+    "starter_code": "class BankAccount:\n    def __init__(self):\n        self._balance = 0\n\n    @property\n    def balance(self):\n        return self._balance\n\n    def deposit(self, amount: float):\n        # your code here\n        raise NotImplementedError\n\n    def withdraw(self, amount: float):\n        # your code here\n        raise NotImplementedError\n",
+    "test_code": "acct = BankAccount()\nacct.deposit(50)\nacct.withdraw(20)\nassert acct.balance == 30\ntry:\n    acct.deposit(0)\n    raise AssertionError('expected ValueError')\nexcept ValueError:\n    pass\ntry:\n    acct.withdraw(100)\n    raise AssertionError('expected ValueError')\nexcept ValueError:\n    pass\n",
+    "hints": [
+      "Store the running balance on self.",
+      "Use raise ValueError('message') for invalid actions.",
+      "A @property lets balance behave like a read-only attribute."
+    ]
+  }
+]
