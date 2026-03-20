@@ -275,8 +275,8 @@ function updateRunButton() {
 async function runChallenge(lesson, code) {
   const python = `
 import io, json, contextlib, traceback
-namespace = {}
 stdout_buffer = io.StringIO()
+namespace = {"stdout_buffer": stdout_buffer}
 code = ${JSON.stringify(code)}
 tests = ${JSON.stringify(lesson.test_code)}
 result = {"passed": False, "summary": "", "output": "", "next_hint": None}
@@ -294,7 +294,7 @@ except AssertionError as exc:
     result["next_hint"] = hints[0] if hints else None
 except Exception:
     result["summary"] = "Python hit an error before the check could pass."
-    result["output"] = stdout_buffer.getvalue() + "\n" + traceback.format_exc(limit=2)
+    result["output"] = stdout_buffer.getvalue() + "\\n" + traceback.format_exc(limit=2)
     hints = ${JSON.stringify(lesson.hints)}
     result["next_hint"] = hints[min(1, len(hints)-1)] if hints else None
 json.dumps(result)
@@ -323,27 +323,42 @@ async function loadLesson(lessonId) {
     if (!state.runtimeReady) return;
     const code = currentCode();
     saveDraft(true);
+    const runBtn = document.getElementById('run-btn');
+    runBtn.disabled = true;
+    runBtn.textContent = 'Checking…';
     document.getElementById('result-box').innerHTML = `<p class="small">Running your code…</p>`;
-    const result = await runChallenge(lesson, code);
-    state.progress.attempts.push({
-      lessonId: lesson.id,
-      passed: result.passed,
-      summary: result.summary,
-      when: new Date().toLocaleString(),
-    });
-    if (result.passed) {
-      state.progress.completed[lesson.id] = true;
+    try {
+      const result = await runChallenge(lesson, code);
+      state.progress.attempts.push({
+        lessonId: lesson.id,
+        passed: result.passed,
+        summary: result.summary,
+        when: new Date().toLocaleString(),
+      });
+      if (result.passed) {
+        state.progress.completed[lesson.id] = true;
+      }
+      saveProgress();
+      computeUnlocks();
+      document.getElementById('result-box').innerHTML = `
+        <p class="${result.passed ? 'result-pass' : 'result-fail'}"><strong>${result.summary}</strong></p>
+        ${result.next_hint ? `<p class="hint"><strong>Try this next:</strong> ${result.next_hint}</p>` : ''}
+        <pre>${escapeHtml(result.output || 'No output this time.')}</pre>
+      `;
+      renderStats();
+      renderLessonList();
+      root.querySelector('.copy-card:last-child').innerHTML = `<h2>Recent attempts</h2>${recentAttemptsMarkup(lesson)}`;
+    } catch (error) {
+      document.getElementById('result-box').innerHTML = `
+        <p class="result-fail"><strong>The checker crashed.</strong></p>
+        <p class="hint">This is a bug in the app, not you.</p>
+        <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
+      `;
+      console.error('runChallenge failed', error);
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run check';
     }
-    saveProgress();
-    computeUnlocks();
-    document.getElementById('result-box').innerHTML = `
-      <p class="${result.passed ? 'result-pass' : 'result-fail'}"><strong>${result.summary}</strong></p>
-      ${result.next_hint ? `<p class="hint"><strong>Try this next:</strong> ${result.next_hint}</p>` : ''}
-      <pre>${escapeHtml(result.output || 'No output this time.')}</pre>
-    `;
-    renderStats();
-    renderLessonList();
-    root.querySelector('.copy-card:last-child').innerHTML = `<h2>Recent attempts</h2>${recentAttemptsMarkup(lesson)}`;
   });
 
   document.getElementById('bookmark-btn').addEventListener('click', () => {
