@@ -3,9 +3,6 @@ name: Deploy Python Dojo Web to GitHub Pages
 on:
   push:
     branches: [main]
-    paths:
-      - 'python-dojo-web/**'
-      - '.github/workflows/python-dojo-web-pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -33,7 +30,7 @@ jobs:
       - name: Upload static site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./python-dojo-web
+          path: .
 
       - name: Deploy to GitHub Pages
         id: deployment
