@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'python-dojo-web-progress-v1';
+const STORAGE_KEY = 'python-dojo-web-progress-v2';
 
 const state = {
   lessons: [],
@@ -7,23 +7,26 @@ const state = {
   autosaveTimer: null,
   pyodide: null,
   runtimeReady: false,
+  runtimeLoading: false,
   progress: loadProgress(),
 };
 
+function defaultProgress() {
+  return {
+    completed: {},
+    attempts: [],
+    drafts: {},
+    bookmark: null,
+  };
+}
+
 function loadProgress() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return {
-      completed: {},
-      attempts: [],
-      drafts: {},
-      bookmark: null,
-    };
-  }
+  if (!raw) return defaultProgress();
   try {
-    return JSON.parse(raw);
+    return { ...defaultProgress(), ...JSON.parse(raw) };
   } catch {
-    return { completed: {}, attempts: [], drafts: {}, bookmark: null };
+    return defaultProgress();
   }
 }
 
@@ -48,7 +51,7 @@ function computeUnlocks() {
     const prevLevel = levels[index - 1];
     const prevGroup = grouped.get(prevLevel) || [];
     const prevPassed = prevGroup.filter((item) => state.progress.completed[item.id]).length;
-    const prevNeeded = Math.max(1, Math.ceil(prevGroup.length * 0.8));
+    const prevNeeded = prevGroup.length === 0 ? 0 : Math.max(1, Math.ceil(prevGroup.length * 0.6));
     const unlocked = index === 0 || prevPassed >= prevNeeded;
     grouped.get(level).forEach((lesson) => {
       lesson.progress = {
@@ -64,20 +67,22 @@ function computeUnlocks() {
 
 function renderStats() {
   const passed = Object.keys(state.progress.completed).length;
+  const current = state.lessons.find((lesson) => lesson.id === state.progress.bookmark);
   document.getElementById('hero-stats').innerHTML = `
     <div class="stat"><span>Completed</span><strong>${passed}/${state.lessons.length}</strong></div>
-    <div class="stat"><span>Total attempts</span><strong>${state.progress.attempts.length}</strong></div>
-    <div class="stat"><span>Resume from</span><strong>${state.progress.bookmark || 'Start'}</strong></div>
+    <div class="stat"><span>Attempts</span><strong>${state.progress.attempts.length}</strong></div>
+    <div class="stat"><span>Current lesson</span><strong>${current?.title || 'Start here'}</strong></div>
     <div class="stat"><span>Saved drafts</span><strong>${Object.keys(state.progress.drafts).length}</strong></div>
   `;
 }
 
 function lessonStatusText(lesson) {
-  if (!lesson.unlocked) return 'Locked until most of the previous level is done';
-  if (lesson.progress.passed) return `Completed · ${lesson.progress.attempts} attempts`;
-  if (lesson.bookmarked) return 'Bookmarked to resume';
+  if (!lesson.unlocked) return 'Locked for now';
+  if (lesson.progress.passed) return `Done · ${lesson.progress.attempts} attempt${lesson.progress.attempts === 1 ? '' : 's'}`;
+  if (lesson.bookmarked) return 'Resume here';
   if (lesson.has_draft) return 'Draft saved';
-  return `${lesson.progress.attempts} attempts so far`;
+  if (lesson.progress.attempts > 0) return `${lesson.progress.attempts} attempt${lesson.progress.attempts === 1 ? '' : 's'}`;
+  return 'Ready';
 }
 
 function renderLessonList() {
@@ -96,29 +101,33 @@ function renderLessonList() {
     node.classList.toggle('done', lesson.progress.passed);
     node.classList.toggle('locked', !lesson.unlocked);
     node.addEventListener('click', () => {
-      if (!lesson.unlocked || !state.runtimeReady) return;
+      if (!lesson.unlocked) return;
       loadLesson(lesson.id);
     });
     root.appendChild(node);
   });
 }
 
-function lessonDetailMarkup(lesson) {
+function recentAttemptsMarkup(lesson) {
   const attempts = state.progress.attempts
     .filter((a) => a.lessonId === lesson.id)
     .slice(-5)
     .reverse()
     .map((a) => `
       <div class="attempt-card">
-        <div class="kpi"><span>${a.when}</span><strong class="${a.passed ? 'result-pass' : 'result-fail'}">${a.passed ? 'PASS' : 'FAIL'}</strong></div>
+        <div class="kpi"><span>${a.when}</span><strong class="${a.passed ? 'result-pass' : 'result-fail'}">${a.passed ? 'PASS' : 'TRY AGAIN'}</strong></div>
         <p>${a.summary}</p>
       </div>
     `).join('');
 
+  return attempts || '<p class="muted">No attempts yet. Start small and make one.</p>';
+}
+
+function lessonDetailMarkup(lesson) {
   return `
     <div class="lesson-grid">
       <div class="stack">
-        <section class="copy-card">
+        <section class="copy-card intro-card">
           <div class="pill-row">
             <span class="pill">${lesson.track}</span>
             <span class="pill">Level ${lesson.level}</span>
@@ -126,38 +135,55 @@ function lessonDetailMarkup(lesson) {
           </div>
           <h2>${lesson.title}</h2>
           <p class="muted">${lesson.summary}</p>
-          <div class="kpi"><span>Why this matters</span><strong>${lesson.why}</strong></div>
-          <div class="kpi"><span>Concepts</span><strong>${lesson.concepts.join(', ')}</strong></div>
-          <div class="kpi"><span>Mission</span><strong>${lesson.brief}</strong></div>
-          <div class="kpi"><span>Draft status</span><strong>${lesson.has_draft ? 'Saved in this browser' : 'Fresh starter code'}</strong></div>
+          <div class="teach-grid">
+            <div class="teach-card">
+              <h3>1. Learn the idea</h3>
+              <p>${lesson.teach || lesson.why}</p>
+            </div>
+            <div class="teach-card">
+              <h3>2. See an example</h3>
+              <pre>${escapeHtml(lesson.example || lesson.starter_code)}</pre>
+            </div>
+            <div class="teach-card">
+              <h3>3. Your tiny task</h3>
+              <p>${lesson.brief}</p>
+            </div>
+          </div>
         </section>
         <section class="editor-card">
-          <h2>Write your solution</h2>
+          <div class="editor-head">
+            <div>
+              <h2>Try it</h2>
+              <p class="small">Type in the editor, then run the check when you're ready.</p>
+            </div>
+            <div id="runtime-pill" class="runtime-pill ${state.runtimeReady ? 'ready' : 'loading'}">${state.runtimeReady ? 'Python ready' : 'Loading Python engine…'}</div>
+          </div>
           <div id="editor"></div>
-          <p class="small">Runs fully in the browser with Pyodide. Drafts autosave locally.</p>
           <div class="actions">
-            <button id="run-btn">Run checks</button>
-            <button id="bookmark-btn" class="ghost">Bookmark this mission</button>
-            <button id="save-btn" class="ghost">Save draft now</button>
-            <button id="hint-btn" class="ghost">Need a hint?</button>
+            <button id="run-btn" ${state.runtimeReady ? '' : 'disabled'}>${state.runtimeReady ? 'Run check' : 'Loading Python…'}</button>
+            <button id="bookmark-btn" class="ghost">Bookmark</button>
+            <button id="save-btn" class="ghost">Save draft</button>
+            <button id="hint-btn" class="ghost">Show hint</button>
           </div>
         </section>
       </div>
       <div class="stack">
         <section class="console-card">
-          <h2>Feedback loop</h2>
+          <h2>Feedback</h2>
           <div id="result-box">
-            <div class="visual-grid">
-              <div class="visual-tile"><strong>Real Python runtime</strong><span class="small">Your code executes in Pyodide, not a fake parser.</span></div>
-              <div class="visual-tile"><strong>Portable learning</strong><span class="small">Host this on any static site and it still works.</span></div>
-              <div class="visual-tile"><strong>Autosaved drafts</strong><span class="small">You can leave and come back without losing your train of thought.</span></div>
-              <div class="visual-tile"><strong>Lesson data</strong><span class="small">Curriculum lives in JSON so it can grow cleanly.</span></div>
+            <div class="result-welcome">
+              <p><strong>Start simple.</strong> Read the idea, copy the pattern, change just one thing, then run the check.</p>
+              <ul>
+                <li>You do not need to solve a big puzzle.</li>
+                <li>You only need the smallest change that makes this lesson pass.</li>
+                <li>If it fails, the hint should tell you what to try next.</li>
+              </ul>
             </div>
           </div>
         </section>
         <section class="copy-card">
           <h2>Recent attempts</h2>
-          ${attempts || '<p class="muted">No attempts yet. Time to make one.</p>'}
+          ${recentAttemptsMarkup(lesson)}
         </section>
       </div>
     </div>
@@ -169,14 +195,17 @@ function createEditor(value) {
     state.editor.dispose();
     state.editor = null;
   }
+  const el = document.getElementById('editor');
+  el.innerHTML = '';
   const build = () => {
-    state.editor = monaco.editor.create(document.getElementById('editor'), {
+    state.editor = monaco.editor.create(el, {
       value,
       language: 'python',
       theme: 'vs-dark',
       automaticLayout: true,
       minimap: { enabled: false },
-      fontSize: 15,
+      fontSize: 16,
+      lineNumbersMinChars: 3,
       roundedSelection: true,
       scrollBeyondLastLine: false,
       padding: { top: 16, bottom: 16 },
@@ -193,7 +222,7 @@ function currentCode() {
 
 function queueAutosave() {
   clearTimeout(state.autosaveTimer);
-  state.autosaveTimer = setTimeout(() => saveDraft(true), 1500);
+  state.autosaveTimer = setTimeout(() => saveDraft(true), 800);
 }
 
 function saveDraft(quiet = false) {
@@ -201,7 +230,7 @@ function saveDraft(quiet = false) {
   state.progress.drafts[state.currentLessonId] = currentCode();
   saveProgress();
   if (!quiet) {
-    document.getElementById('result-box').innerHTML = `<p class="result-pass"><strong>Draft saved.</strong></p>`;
+    document.getElementById('result-box').innerHTML = `<p class="result-pass"><strong>Draft saved.</strong> You can come back to this lesson later.</p>`;
   }
   computeUnlocks();
   renderStats();
@@ -209,10 +238,38 @@ function saveDraft(quiet = false) {
 }
 
 async function ensureRuntime() {
-  document.getElementById('runtime-status').textContent = 'Loading Python runtime…';
-  state.pyodide = await loadPyodide();
-  state.runtimeReady = true;
-  document.getElementById('runtime-status').textContent = 'Python runtime ready.';
+  if (state.runtimeReady || state.runtimeLoading) return;
+  state.runtimeLoading = true;
+  updateRuntimeStatus('Loading Python engine…');
+  try {
+    state.pyodide = await loadPyodide();
+    state.runtimeReady = true;
+    updateRuntimeStatus('Python ready');
+    updateRunButton();
+  } catch (error) {
+    updateRuntimeStatus(`Python failed to load: ${error.message}`);
+    throw error;
+  } finally {
+    state.runtimeLoading = false;
+  }
+}
+
+function updateRuntimeStatus(text) {
+  const status = document.getElementById('runtime-status');
+  if (status) status.textContent = text;
+  const pill = document.getElementById('runtime-pill');
+  if (pill) {
+    pill.textContent = text;
+    pill.classList.toggle('ready', state.runtimeReady);
+    pill.classList.toggle('loading', !state.runtimeReady);
+  }
+}
+
+function updateRunButton() {
+  const btn = document.getElementById('run-btn');
+  if (!btn) return;
+  btn.disabled = !state.runtimeReady;
+  btn.textContent = state.runtimeReady ? 'Run check' : 'Loading Python…';
 }
 
 async function runChallenge(lesson, code) {
@@ -228,16 +285,16 @@ try:
         exec(code, namespace, namespace)
         exec(tests, namespace, namespace)
     result["passed"] = True
-    result["summary"] = "Nice — all checks passed."
+    result["summary"] = "Nice — that worked. On to the next tiny win."
     result["output"] = stdout_buffer.getvalue()
 except AssertionError as exc:
-    result["summary"] = f"One of the checks failed: {exc or 'expected result did not match'}"
+    result["summary"] = f"Almost there: {exc or 'the result was not what the lesson expected'}"
     result["output"] = stdout_buffer.getvalue()
     hints = ${JSON.stringify(lesson.hints)}
     result["next_hint"] = hints[0] if hints else None
 except Exception:
-    result["summary"] = "Your code crashed while running the checks."
-    result["output"] = stdout_buffer.getvalue() + "\n" + traceback.format_exc(limit=4)
+    result["summary"] = "Python hit an error before the check could pass."
+    result["output"] = stdout_buffer.getvalue() + "\n" + traceback.format_exc(limit=2)
     hints = ${JSON.stringify(lesson.hints)}
     result["next_hint"] = hints[min(1, len(hints)-1)] if hints else None
 json.dumps(result)
@@ -259,10 +316,14 @@ async function loadLesson(lessonId) {
   root.classList.remove('empty');
   root.innerHTML = lessonDetailMarkup(lesson);
   createEditor(state.progress.drafts[lesson.id] || lesson.starter_code);
+  updateRuntimeStatus(state.runtimeReady ? 'Python ready' : 'Loading Python engine…');
+  updateRunButton();
 
   document.getElementById('run-btn').addEventListener('click', async () => {
+    if (!state.runtimeReady) return;
     const code = currentCode();
     saveDraft(true);
+    document.getElementById('result-box').innerHTML = `<p class="small">Running your code…</p>`;
     const result = await runChallenge(lesson, code);
     state.progress.attempts.push({
       lessonId: lesson.id,
@@ -277,11 +338,12 @@ async function loadLesson(lessonId) {
     computeUnlocks();
     document.getElementById('result-box').innerHTML = `
       <p class="${result.passed ? 'result-pass' : 'result-fail'}"><strong>${result.summary}</strong></p>
-      ${result.next_hint ? `<p class="hint">Hint: ${result.next_hint}</p>` : ''}
-      <pre>${escapeHtml(result.output || 'No console output.')}</pre>
+      ${result.next_hint ? `<p class="hint"><strong>Try this next:</strong> ${result.next_hint}</p>` : ''}
+      <pre>${escapeHtml(result.output || 'No output this time.')}</pre>
     `;
     renderStats();
     renderLessonList();
+    root.querySelector('.copy-card:last-child').innerHTML = `<h2>Recent attempts</h2>${recentAttemptsMarkup(lesson)}`;
   });
 
   document.getElementById('bookmark-btn').addEventListener('click', () => {
@@ -290,11 +352,12 @@ async function loadLesson(lessonId) {
     computeUnlocks();
     renderStats();
     renderLessonList();
+    document.getElementById('result-box').innerHTML = `<p class="result-pass"><strong>Bookmarked.</strong> This lesson is now your return point.</p>`;
   });
 
   document.getElementById('save-btn').addEventListener('click', () => saveDraft(false));
   document.getElementById('hint-btn').addEventListener('click', () => {
-    const hint = lesson.hints?.[0] || 'Try breaking the problem into small steps.';
+    const hint = lesson.hints?.[0] || 'Change one small thing at a time, then run the check again.';
     document.getElementById('result-box').innerHTML = `<p class="hint"><strong>Hint:</strong> ${hint}</p>`;
   });
 }
@@ -311,7 +374,7 @@ function exportProgress() {
 
 async function importProgress(file) {
   const text = await file.text();
-  state.progress = JSON.parse(text);
+  state.progress = { ...defaultProgress(), ...JSON.parse(text) };
   saveProgress();
   computeUnlocks();
   renderStats();
@@ -321,7 +384,7 @@ async function importProgress(file) {
 
 function resetProgress() {
   if (!confirm('Reset all progress?')) return;
-  state.progress = { completed: {}, attempts: [], drafts: {}, bookmark: null };
+  state.progress = defaultProgress();
   saveProgress();
   computeUnlocks();
   renderStats();
@@ -331,15 +394,16 @@ function resetProgress() {
 }
 
 function escapeHtml(text) {
-  return text.replace(/[&<>\"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  return String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
 
 async function init() {
-  await Promise.all([fetchLessons(), ensureRuntime()]);
+  await fetchLessons();
   renderStats();
   renderLessonList();
   const first = state.lessons.find((item) => item.id === state.progress.bookmark && item.unlocked) || state.lessons.find((item) => item.unlocked);
   if (first) loadLesson(first.id);
+  ensureRuntime().catch((error) => console.error(error));
 }
 
 document.getElementById('export-btn').addEventListener('click', exportProgress);
@@ -352,6 +416,6 @@ document.getElementById('import-input').addEventListener('change', async (event)
 document.getElementById('reset-btn').addEventListener('click', resetProgress);
 
 init().catch((error) => {
-  document.getElementById('runtime-status').textContent = `Failed to start runtime: ${error.message}`;
+  document.getElementById('runtime-status').textContent = `Failed to start: ${error.message}`;
   console.error(error);
 });
