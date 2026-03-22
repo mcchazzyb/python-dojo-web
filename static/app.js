@@ -277,6 +277,7 @@ async function runChallenge(lesson, code) {
 import io, json, contextlib, traceback
 stdout_buffer = io.StringIO()
 namespace = {"stdout_buffer": stdout_buffer}
+namespace["namespace"] = namespace
 code = ${JSON.stringify(code)}
 tests = ${JSON.stringify(lesson.test_code)}
 result = {"passed": False, "summary": "", "output": "", "next_hint": None}
